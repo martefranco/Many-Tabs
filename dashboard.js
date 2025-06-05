@@ -1,6 +1,9 @@
 /* dashboard.js — 100 % Vanilla JS & CSP-safe */
 import * as store from './storage.js';
 
+// Mantiene el estado de ventanas expandidas entre renderizados
+const expandedWindows = new Set();
+
 /* ═════════════ 1. SINCRONIZAR ═════════════ */
 document.getElementById('btn-sync').addEventListener('click', async () => {
   if (!confirm('¿Eliminar pestañas suspendidas y mapear las activas?')) return;
@@ -27,10 +30,7 @@ async function renderDashboard() {
     `<b>Pestañas activas:</b> ${act} &nbsp; ` +
     `<b>Pestañas suspendidas:</b> ${sus}`;
 
-  // Set para guardar los IDs de ventanas expandidas
-  const expandedWindows = new Set();
-
-  // Guarda los IDs de ventanas actualmente expandidas
+  // Guarda los IDs de ventanas actualmente expandidas y resetea para el nuevo render
   const prevExpanded = new Set(expandedWindows);
   expandedWindows.clear();
 
