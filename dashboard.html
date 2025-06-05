@@ -38,15 +38,20 @@
     #sidebar nav a:hover,#sidebar nav a.active{background:#37474f}
 
     #main{flex:1;overflow:auto;background:var(--bg-main);padding:24px}
-    .stats{margin-bottom:20px;font-size:15px}
+    .stats{margin-bottom:20px;font-size:14px}
 
     .btn-primary{padding:8px 16px;border:none;border-radius:4px;
-      background:var(--primary);color:#fff;font-size:15px;cursor:pointer}
+      background:var(--primary);color:#fff;font-size:14px;cursor:pointer}
     .btn-primary:hover{background:#1565c0}
 
     /* tema toggle */
-    .theme-toggle-btn{display:flex;align-items:center;gap:6px;background:none;border:none;color:inherit;cursor:pointer;font-size:15px}
-    .theme-toggle-btn svg{width:20px;height:20px}
+    .theme-switch{display:flex;align-items:center;gap:6px;color:inherit;cursor:pointer;font-size:15px}
+    .theme-switch input{display:none}
+    .switch-slider{width:32px;height:18px;background:#888;border-radius:9px;position:relative;transition:background .25s}
+    .switch-slider::before{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .25s}
+    .theme-switch input:checked + .switch-slider{background:var(--primary)}
+    .theme-switch input:checked + .switch-slider::before{transform:translateX(14px)}
+    .theme-switch svg{width:20px;height:20px}
 
     /* tarjetas ventana */
     .card{background:var(--card-bg);border-radius:6px;margin-bottom:12px;
@@ -57,9 +62,9 @@
     /* Estilos para los ítems de pestaña */
     .tab-item {
       display: flex;
-      gap: 8px; /* Espacio entre favicon, título/dominio, y acciones */
+      gap: 6px; /* Espacio entre favicon, título/dominio, y acciones */
       align-items: center;
-      padding: 8px 0; /* Padding vertical para cada fila de pestaña */
+      padding: 6px 0; /* Padding vertical para cada fila de pestaña */
       border-bottom: 1px solid var(--bg-main); /* Separador sutil, ajusta color si es necesario */
     }
     .card-body .tab-item:last-child {
@@ -103,10 +108,11 @@
     
     /* Iconos de acción */
     .icon-action{
-      cursor:pointer;user-select:none;padding:2px 6px;font-size:18px;opacity:.7;transition:background .15s,border-radius .15s,opacity .15s;
+      cursor:pointer;user-select:none;padding:2px 6px;opacity:.7;transition:background .15s,border-radius .15s,opacity .15s;
       border-radius:4px;line-height:1.2;display:inline-flex;align-items:center;justify-content:center;
       margin-left: 4px; /* Pequeño margen entre iconos de acción */
     }
+    .icon-action svg{width:18px;height:18px}
     .icon-action:first-of-type {
         margin-left: 8px; /* Más margen para el primer icono de acción después del dominio */
     }
@@ -148,9 +154,12 @@
     <button id="btn-sync" class="btn-primary">Sincronizar</button>
 
     <!-- toggle tema -->
-    <button id="theme-toggle-btn" class="theme-toggle-btn">
-      <span id="theme-icon"></span><span id="theme-label">Tema</span>
-    </button>
+    <label class="theme-switch">
+      <input type="checkbox" id="theme-toggle-btn">
+      <span class="switch-slider"></span>
+      <svg id="theme-icon" viewBox="0 0 24 24"></svg>
+      <span id="theme-label">Tema</span>
+    </label>
 
     <nav>
       <a href="#" id="nav-tabs" class="active">Pestañas</a>
