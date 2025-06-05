@@ -1,7 +1,7 @@
 /* ──────────────────────────────────────────────────
    TAB SUSPENDER — Service Worker (Manifest V3)
    ──────────────────────────────────────────────────
-   1  Configuración y helper
+   1  Configuración y helpers
    2  Instalación (alarma + menú)
    3  UI (icono·comandos·menú)
    4  Mensajes: SYNC_ALL  | RESTORE_TAB
