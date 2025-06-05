@@ -12,7 +12,7 @@
 
    /* ═════════════ 1. CONFIGURACIÓN & HELPERS ═══════════ */
    const SUSPEND_MINUTES = 600;
-   const ALARM_NAME      = 'checkInactive';
+   const ALARM_NAME = 'checkInactive';
    
    /* suspende pestaña ACTIVA */
    async function suspendTab(tab) {
