@@ -134,7 +134,10 @@ document.getElementById('search').addEventListener('input', async e => {
     (t.url   && t.url.toLowerCase().includes(q))
   );
   out.innerHTML = hits.length
-    ? hits.map(t => `<div class="tab-item">🟢 <span><b>${t.title || '(sin título)'}</b><br><small>${t.url}</small></span></div>`).join('<hr>')
+    ? hits.map(t =>
+        `<div class="tab-item">${t.state === 'ACTIVE' ? '🟢' : '⚫'} ` +
+        `<span><b>${t.title || '(sin título)'}</b><br><small>${t.url}</small></span></div>`
+      ).join('')
     : 'Sin resultados.';
 });
 
