@@ -36,43 +36,54 @@
    }
    
    /* restaura pestaña SUSPENDIDA */
-   async function restoreTab(tid) {
-     const { windows = {}, tabs = {} } = await store.get(['windows', 'tabs']);
-     const t = tabs[tid];
-     if (!t || t.state !== 'SUSPENDED') return false;
-   
-     let win, createdNewWindow = false;
-     try {
-       win = await chrome.windows.get(Number(t.windowId));
-     } catch {
-       win = await chrome.windows.create({ url: t.url });
-       createdNewWindow = true;
-     }
-   
-     // Solo crear la pestaña si NO acabamos de crear la ventana (porque Chrome ya la abrió)
-     if (!createdNewWindow) {
-       await chrome.tabs.create({ windowId: win.id, url: t.url });
-     }
-   
-     // Si se creó una nueva ventana, actualiza el windowId de la pestaña y crea el registro de la ventana si no existe
-     if (createdNewWindow) {
-       t.windowId = String(win.id);
-       if (!windows[t.windowId]) {
-         windows[t.windowId] = { alias: `Ventana ${t.windowId}`, active: 0, suspended: 0, lastActive: Date.now() };
-       }
-     }
-   
-     // Actualiza contadores y estado
-     const w = windows[t.windowId] ?? windows[String(win.id)];
-     if (w) {
-       w.suspended = Math.max(0, (w.suspended || 1) - 1);
-       w.active = (w.active || 0) + 1;
-     }
-     t.state = 'ACTIVE'; t.lastVisit = Date.now();
-   
-     await store.set({ windows, tabs });
-     return true;
-   }
+  async function restoreTab(tid) {
+    const { windows = {}, tabs = {} } = await store.get(['windows', 'tabs']);
+    const t = tabs[tid];
+    if (!t || t.state !== 'SUSPENDED') return false;
+
+    let win, createdNewWindow = false, newTab;
+    try {
+      win = await chrome.windows.get(Number(t.windowId));
+    } catch {
+      win = await chrome.windows.create({ url: t.url });
+      createdNewWindow = true;
+      newTab = win.tabs && win.tabs[0];
+    }
+
+    // Solo crear la pestaña si NO acabamos de crear la ventana (porque Chrome ya la abrió)
+    if (!createdNewWindow) {
+      newTab = await chrome.tabs.create({ windowId: win.id, url: t.url });
+    }
+
+    // Si se creó una nueva ventana, actualiza el windowId de la pestaña y crea el registro de la ventana si no existe
+    if (createdNewWindow) {
+      t.windowId = String(win.id);
+      if (!windows[t.windowId]) {
+        windows[t.windowId] = { alias: `Ventana ${t.windowId}`, active: 0, suspended: 0, lastActive: Date.now() };
+      }
+    }
+
+    // Actualiza contadores y estado
+    const w = windows[t.windowId] ?? windows[String(win.id)];
+    if (w) {
+      w.suspended = Math.max(0, (w.suspended || 1) - 1);
+      w.active = (w.active || 0) + 1;
+    }
+    // Eliminar la entrada con el viejo ID y registrar la nueva pestaña
+    delete tabs[tid];
+    tabs[String(newTab.id)] = {
+      windowId: String(newTab.windowId),
+      url: newTab.url,
+      title: newTab.title,
+      favIcon: newTab.favIconUrl,
+      lastVisit: Date.now(),
+      state: 'ACTIVE'
+    };
+    restoreIgnore.add(newTab.id);
+
+    await store.set({ windows, tabs });
+    return true;
+  }
    async function deleteTab(tid){
     const { windows={}, tabs={} } = await store.get(['windows','tabs']);
     const t = tabs[tid];
@@ -131,7 +142,14 @@
    /* ═════════════  LISTENERS LIVE-SYNC  ═════════════ */
 
 /* 1️⃣  TAB creada */
+const restoreIgnore = new Set();
+
 chrome.tabs.onCreated.addListener(async tab => {
+  if (restoreIgnore.has(tab.id)) {
+    restoreIgnore.delete(tab.id);
+    return; // Skip processing, handled during restore
+  }
+
   const { windows={}, tabs={} } = await store.get(['windows','tabs']);
 
   const wid = String(tab.windowId);
