@@ -19,7 +19,7 @@ export const clear = () =>
     chrome.storage.local.clear(() => resolve());
   });
 
-// Debounced write: accumulates changes and writes every 500ms max
+// Debounced write: accumulates changes and writes every 100ms max
 export function queueWrite(obj) {
   Object.assign(writeQueue, obj);
   if (writeTimeout) clearTimeout(writeTimeout);
