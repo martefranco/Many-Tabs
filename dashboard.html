@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tab Suspender — Dashboard</title>
+
+  <style>
+    /* ───  PALETA ───────────────────────── */
+    :root{
+      --primary:#1976d2;         /* azul principal */
+      --bg-side:#263238;
+      --bg-main:#f5f5f5;
+      --card-bg:#fff;
+      --text-main:#000;
+      --text-domain:#757575; /* Color para el dominio */
+      --icon-action-hover-bg: rgba(25,118,210,0.08);
+    }
+    @media (prefers-color-scheme:dark){
+      :root{
+        --bg-side:#37474f; --bg-main:#121212;
+        --card-bg:#1e1e1e; --text-main:#e0e0e0;
+        --text-domain:#9e9e9e; /* Color para el dominio en modo oscuro */
+        --icon-action-hover-bg: rgba(134, 184, 230, 0.1); /* Ajuste para hover de iconos en oscuro */
+      }
+    }
+    :root[data-theme='light']{ --bg-side:#263238; --bg-main:#f5f5f5; --card-bg:#fff;  --text-main:#000; --text-domain:#757575; --icon-action-hover-bg: rgba(25,118,210,0.08); }
+    :root[data-theme='dark'] { --bg-side:#37474f; --bg-main:#121212; --card-bg:#1e1e1e; --text-main:#e0e0e0; --text-domain:#9e9e9e; --icon-action-hover-bg: rgba(134, 184, 230, 0.1); }
+
+    /* ───  LAYOUT GENERAL ───────────────── */
+    body{margin:0;height:100vh;display:flex;font-family:system-ui,sans-serif;color:var(--text-main)}
+    #sidebar{
+      width:170px;min-width:120px;background:var(--bg-side);color:#eceff1;
+      padding:16px 10px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px;
+      transition:left .25s;
+    }
+    #sidebar h2{margin:0;font-size:19px}
+    #sidebar nav a{display:block;padding:8px 10px;border-radius:4px;color:inherit;text-decoration:none;font-size:15px}
+    #sidebar nav a:hover,#sidebar nav a.active{background:#37474f}
+
+    #main{flex:1;overflow:auto;background:var(--bg-main);padding:24px}
+    .stats{margin-bottom:20px;font-size:15px}
+
+    .btn-primary{padding:8px 16px;border:none;border-radius:4px;
+      background:var(--primary);color:#fff;font-size:15px;cursor:pointer}
+    .btn-primary:hover{background:#1565c0}
+
+    /* tema toggle */
+    .theme-toggle-btn{display:flex;align-items:center;gap:6px;background:none;border:none;color:inherit;cursor:pointer;font-size:15px}
+    .theme-toggle-btn svg{width:20px;height:20px}
+
+    /* tarjetas ventana */
+    .card{background:var(--card-bg);border-radius:6px;margin-bottom:12px;
+          box-shadow:0 1px 4px rgba(0,0,0,.1)}
+    .card-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;cursor:pointer}
+    .card-body{padding:10px 16px;display:none}
+    
+    /* Estilos para los ítems de pestaña */
+    .tab-item {
+      display: flex;
+      gap: 8px; /* Espacio entre favicon, título/dominio, y acciones */
+      align-items: center;
+      padding: 8px 0; /* Padding vertical para cada fila de pestaña */
+      border-bottom: 1px solid var(--bg-main); /* Separador sutil, ajusta color si es necesario */
+    }
+    .card-body .tab-item:last-child {
+        border-bottom: none; /* No borde para el último ítem */
+    }
+
+    .tab-item img.favicon, .tab-item .status-indicator {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0; /* Evita que se encoja */
+        object-fit: contain; /* Asegura que el favicon no se deforme */
+        vertical-align: middle;
+    }
+    .tab-item .status-indicator { /* Para el 🟢 o ⚫ si no hay favicon */
+        font-size: 12px; /* Para hacer los círculos un poco más pequeños */
+        line-height: 16px; /* Alinear verticalmente */
+        text-align: center;
+        display: inline-block; /* Para que se muestre correctamente */
+    }
+
+    .tab-item .tab-title-container {
+        flex-grow: 1; /* Ocupa el espacio disponible entre favicon y dominio/acciones */
+        overflow: hidden; /* Necesario para text-overflow en el hijo */
+        min-width: 0; /* Ayuda a flexbox a manejar el overflow correctamente */
+    }
+    .tab-item .tab-title-text {
+        display: block; /* Para que text-overflow funcione */
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--text-main); /* Hereda color del cuerpo */
+    }
+    .tab-item .tab-url-domain {
+        color: var(--text-domain);
+        white-space: nowrap;
+        margin-left: auto;  /* Empuja el dominio a la derecha de tab-title-container */
+        padding-left: 8px; /* Espacio para que no se pegue al título si este es corto */
+        font-size: 0.9em;
+        flex-shrink: 0; /* Evita que el dominio se encoja */
+    }
+    
+    /* Iconos de acción */
+    .icon-action{
+      cursor:pointer;user-select:none;padding:2px 6px;font-size:18px;opacity:.7;transition:background .15s,border-radius .15s,opacity .15s;
+      border-radius:4px;line-height:1.2;display:inline-flex;align-items:center;justify-content:center;
+      margin-left: 4px; /* Pequeño margen entre iconos de acción */
+    }
+    .icon-action:first-of-type {
+        margin-left: 8px; /* Más margen para el primer icono de acción después del dominio */
+    }
+    .icon-action:hover{background:var(--icon-action-hover-bg);opacity:1;}
+    .suspend-icon{color:#1976d2;}
+    .restore-icon{color:#4caf50;}
+    .delete-icon{color:#e53935;}
+
+    /* Botones antiguos, no se usan en la nueva maqueta de ítem de pestaña */
+    .restore-btn, .delete-btn { display: none; }
+
+
+    /* burger móvil */
+    #burger{display:none;background:none;border:none;color:inherit;font-size:22px;cursor:pointer}
+    @media(max-width:640px){
+      #sidebar{position:fixed;left:-180px}
+      #sidebar.open{left:0}
+      #burger{display:block;position:fixed;top:10px;left:10px;z-index:999}
+      .tab-item .tab-url-domain { display: none; } /* Ocultar dominio en pantallas muy pequeñas si es necesario */
+    }
+
+    /* Estilos para los resultados de búsqueda, heredarán de .tab-item */
+    #results .tab-item {
+        padding: 6px 10px; /* Ajustar padding para resultados */
+        border-bottom: 1px solid var(--card-bg); /* Separador para resultados */
+    }
+    #results .tab-item:last-child {
+        border-bottom: none;
+    }
+
+  </style>
+</head>
+
+<body>
+  <!-- NAV DRAWER -->
+  <aside id="sidebar">
+    <h2>Tab Suspender</h2>
+
+    <button id="btn-sync" class="btn-primary">Sincronizar</button>
+
+    <!-- toggle tema -->
+    <button id="theme-toggle-btn" class="theme-toggle-btn">
+      <span id="theme-icon"></span><span id="theme-label">Tema</span>
+    </button>
+
+    <nav>
+      <a href="#" id="nav-tabs" class="active">Pestañas</a>
+      <!-- futuros módulos -->
+    </nav>
+  </aside>
+
+  <!-- burger móvil -->
+  <button id="burger">☰</button>
+
+  <!-- CONTENIDO -->
+  <main id="main">
+    <div class="stats" id="stats"></div>
+    <div id="cards"></div> <!-- Las tarjetas de ventana contendrán los ítems de pestaña -->
+
+    <input id="search" type="text" placeholder="Buscar pestañas…">
+    <div id="results"></div> <!-- Los resultados de búsqueda usarán .tab-item también -->
+  </main>
+
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>
