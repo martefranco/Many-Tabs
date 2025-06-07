@@ -9,7 +9,6 @@ const ICONS = {
   windowSuspend: 'M6 18L18 6M6 6l12 12',
   windowRestore: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m-4.991 4.99a8.25 8.25 0 0 1-16.5 0',
   focus: 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7Z',
-  expand: 'M8 9l4-4 4 4m0 6l-4 4-4-4',
   sun: 'M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z',
   moon: 'M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z'
 };
@@ -198,9 +197,6 @@ function createWindowCard(wid, win, allTabs) {
       <div class="window-action" data-action="restore-all" data-window="${wid}" title="Restaurar todas">
         ${createIcon(ICONS.windowRestore).outerHTML}
       </div>
-      <div class="window-action expand-toggle" data-window="${wid}" title="Expandir/Colapsar">
-        ${createIcon(ICONS.expand).outerHTML}
-      </div>
     </div>
   `;
 
@@ -211,10 +207,6 @@ function createWindowCard(wid, win, allTabs) {
   if (isExpanded) {
     body.style.display = 'block';
     populateWindowTabs(body, windowTabs);
-    const expandIcon = header.querySelector('.expand-toggle svg');
-    if (expandIcon) {
-      expandIcon.style.transform = 'rotate(180deg)';
-    }
   } else {
     body.style.display = 'none';
   }
@@ -414,22 +406,14 @@ function toggleWindowExpansion(wid) {
   const isExpanded = appState.expandedWindows.has(wid);
   const card = document.querySelector(`[data-window-id="${wid}"]`);
   const body = card?.querySelector('.card-body');
-  const expandIcon = card?.querySelector('.expand-toggle svg');
-  
   if (!card || !body) return;
-  
+
   if (isExpanded) {
     body.style.display = 'none';
     appState.expandedWindows.delete(wid);
-    if (expandIcon) {
-      expandIcon.style.transform = 'rotate(0deg)';
-    }
   } else {
     body.style.display = 'block';
     appState.expandedWindows.add(wid);
-    if (expandIcon) {
-      expandIcon.style.transform = 'rotate(180deg)';
-    }
     
     if (body.children.length === 0) {
       populateWindowTabsById(wid, body);
@@ -538,16 +522,6 @@ document.addEventListener('click', async (e) => {
     return;
   }
   
-  // EXPANDIR/COLAPSAR
-  if (target.closest('.expand-toggle')) {
-    e.preventDefault();
-    e.stopPropagation();
-    const wid = target.closest('.expand-toggle').dataset.window;
-    if (wid) {
-      toggleWindowExpansion(wid);
-    }
-    return;
-  }
   
   // CHECKBOX
   if (target.classList.contains('custom-checkbox')) {
