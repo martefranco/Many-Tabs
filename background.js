@@ -24,10 +24,15 @@
        windows[wid].active    = Math.max(0, (windows[wid].active || 1) - 1);
        windows[wid].suspended = (windows[wid].suspended || 0) + 1;
    
-       tabs[String(tab.id)] = {
-         windowId: wid, url: tab.url, title: tab.title, favIcon: tab.favIconUrl,
-         lastVisit: Date.now(), state: 'SUSPENDED'
-       };
+      tabs[String(tab.id)] = {
+        windowId: wid,
+        url: tab.url,
+        title: tab.title,
+        favIcon: tab.favIconUrl,
+        index: tab.index,
+        lastVisit: Date.now(),
+        state: 'SUSPENDED'
+      };
    
        await store.set({ windows, tabs });
    
@@ -79,12 +84,21 @@
         }
       }
 
-      // Si se creó una nueva ventana, actualiza el windowId de la pestaña
+      // Si se creó una nueva ventana, actualiza todas las pestañas que estaban
+      // asociadas a la ventana cerrada para que usen el nuevo ID
       if (createdNewWindow) {
-        t.windowId = String(win.id);
-        if (!windows[t.windowId]) {
-          windows[t.windowId] = { alias: `Ventana ${t.windowId}`, active: 0, suspended: 0, lastActive: Date.now() };
+        const newWid = String(win.id);
+        for (const [id, tabData] of Object.entries(tabs)) {
+          if (tabData.windowId === t.windowId) {
+            tabData.windowId = newWid;
+          }
         }
+        if (!windows[newWid]) {
+          windows[newWid] = { alias: `Ventana ${newWid}`, active: 0, suspended: 0, lastActive: Date.now() };
+        }
+        windows[newWid].closed = false;
+        delete windows[t.windowId];
+        t.windowId = newWid;
       }
 
       // Actualiza contadores y estado
@@ -92,6 +106,7 @@
       if (w) {
         w.suspended = Math.max(0, (w.suspended || 1) - 1);
         w.active = (w.active || 0) + 1;
+        w.closed = false;
       }
       
       // Eliminar la entrada con el viejo ID y registrar la nueva pestaña
@@ -101,6 +116,7 @@
         url: newTab.url,
         title: newTab.title,
         favIcon: newTab.favIconUrl,
+        index: newTab.index,
         lastVisit: Date.now(),
         state: 'ACTIVE'
       };
@@ -146,6 +162,11 @@
   
        /* 3 ▸ elimina entrada y guarda */
        delete tabs[tid];
+
+       const remaining = Object.values(tabs).some(t2 => t2.windowId === t.windowId && t2 !== t);
+       if (!remaining) {
+         delete windows[t.windowId];
+       }
        await store.set({ windows, tabs });
        console.info(`[TabSuspender] Pestaña ${tid} eliminada del sistema`);
        return true;
@@ -247,12 +268,17 @@ chrome.tabs.onCreated.addListener(async tab => {
     const { windows={}, tabs={} } = await store.get(['windows','tabs']);
 
     const wid = String(tab.windowId);
-    windows[wid] ??= { alias:`Ventana ${wid}`, active:0, suspended:0, lastActive:Date.now() };
+    windows[wid] ??= { alias:`Ventana ${wid}`, active:0, suspended:0, lastActive:Date.now(), closed:false };
     windows[wid].active++;
 
     tabs[String(tab.id)] = {
-      windowId: wid, url:tab.url, title:tab.title, favIcon:tab.favIconUrl,
-      lastVisit: Date.now(), state:'ACTIVE'
+      windowId: wid,
+      url:tab.url,
+      title:tab.title,
+      favIcon:tab.favIconUrl,
+      index: tab.index,
+      lastVisit: Date.now(),
+      state:'ACTIVE'
     };
 
     store.queueWrite({ windows, tabs });
@@ -275,7 +301,7 @@ chrome.tabs.onRemoved.addListener(async (tabId, info) => {
       w.active = Math.max(0, (w.active || 1) - 1);
       delete tabs[tabId];
       // Si tras eliminar la pestaña no quedan pestañas en la ventana, elimina la ventana del modelo
-      const quedanEnVentana = Object.values(tabs).some(tab => tab.windowId === t.windowId && tabId !== String(tabId));
+      const quedanEnVentana = Object.entries(tabs).some(([id, tab]) => tab.windowId === t.windowId && id !== String(tabId));
       if (!quedanEnVentana) {
         delete windows[t.windowId];
       }
@@ -288,16 +314,35 @@ chrome.tabs.onRemoved.addListener(async (tabId, info) => {
   }
 });
 
+/* 2️⃣b TAB movida: actualiza índice */
+chrome.tabs.onMoved.addListener(async (tabId, moveInfo) => {
+  try {
+    const { tabs = {} } = await store.get(['tabs']);
+    const t = tabs[String(tabId)];
+    if (t) {
+      t.index = moveInfo.toIndex;
+      await store.set({ tabs });
+    }
+  } catch (err) {
+    console.error(`[TabSuspender] Error en onMoved para pestaña ${tabId}:`, err);
+  }
+});
+
 /* 3️⃣  VENTANA cerrada: borra su registro y las pestañas que queden */
 chrome.windows.onRemoved.addListener(async winId => {
   try {
-    const { windows={}, tabs={} } = await store.get(['windows','tabs']);
+    const { windows = {}, tabs = {} } = await store.get(['windows', 'tabs']);
     const wid = String(winId);
 
-    delete windows[wid];
-    for (const [id, t] of Object.entries(tabs)){
-      if (t.windowId === wid) delete tabs[id];
+    const hasTabs = Object.values(tabs).some(t => t.windowId === wid);
+
+    if (!hasTabs) {
+      delete windows[wid];
+    } else {
+      windows[wid] = windows[wid] || { alias: `Ventana ${wid}`, active: 0, suspended: 0, lastActive: Date.now() };
+      windows[wid].closed = true;
     }
+
     store.queueWrite({ windows, tabs });
     await store.set({ windows, tabs });
   } catch (err) {
@@ -396,11 +441,16 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
    
        for (const win of wins){
          const wid = String(win.id);
-         winData[wid] = { alias:`Ventana ${wid}`,active:win.tabs.length,suspended:0,lastActive:Date.now()};
+         winData[wid] = { alias:`Ventana ${wid}`,active:win.tabs.length,suspended:0,lastActive:Date.now(), closed:false};
          for (const tab of win.tabs){
            tabData[String(tab.id)] = {
-             windowId:wid,url:tab.url,title:tab.title,favIcon:tab.favIconUrl,
-             lastVisit:Date.now(),state:'ACTIVE'
+             windowId:wid,
+             url:tab.url,
+             title:tab.title,
+             favIcon:tab.favIconUrl,
+             index: tab.index,
+             lastVisit:Date.now(),
+             state:'ACTIVE'
            };
          }
        }

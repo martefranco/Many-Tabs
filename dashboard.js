@@ -168,6 +168,7 @@ async function renderDashboard() {
 function createWindowCard(wid, win, allTabs) {
   const card = document.createElement('div');
   card.className = 'card';
+  if (win.closed) card.classList.add('closed');
   card.dataset.windowId = wid;
   
   const isExpanded = appState.expandedWindows.has(wid);
@@ -207,6 +208,7 @@ function createWindowCard(wid, win, allTabs) {
   if (isExpanded) {
     body.style.display = 'block';
     populateWindowTabs(body, windowTabs);
+    adjustBodyHeight(body);
   } else {
     body.style.display = 'none';
   }
@@ -218,16 +220,22 @@ function createWindowCard(wid, win, allTabs) {
 
 function populateWindowTabs(body, windowTabs) {
   body.innerHTML = '';
-  
-  windowTabs.sort(([, a], [, b]) => {
-    if (a.state !== b.state) return a.state === 'ACTIVE' ? -1 : 1;
-    return (a.title || '').localeCompare(b.title || '');
-  });
+
+  windowTabs.sort(([, a], [, b]) => (a.index ?? 0) - (b.index ?? 0));
 
   windowTabs.forEach(([tabId, tab]) => {
     const tabItem = createTabItem(tabId, tab);
     body.appendChild(tabItem);
   });
+  adjustBodyHeight(body);
+}
+
+function adjustBodyHeight(body) {
+  const item = body.querySelector('.tab-item');
+  const h = item ? item.offsetHeight : 48;
+  const count = body.children.length;
+  const visible = Math.min(count, 15);
+  body.style.maxHeight = (h * visible) + 'px';
 }
 
 function createTabItem(tabId, tab) {
@@ -414,10 +422,11 @@ function toggleWindowExpansion(wid) {
   } else {
     body.style.display = 'block';
     appState.expandedWindows.add(wid);
-    
+
     if (body.children.length === 0) {
       populateWindowTabsById(wid, body);
     }
+    adjustBodyHeight(body);
   }
 }
 
@@ -425,6 +434,7 @@ async function populateWindowTabsById(wid, body) {
   const { tabs = {} } = await store.get(['tabs']);
   const windowTabs = Object.entries(tabs).filter(([, tab]) => tab.windowId === wid);
   populateWindowTabs(body, windowTabs);
+  adjustBodyHeight(body);
 }
 
 async function suspendAllInWindow(wid) {
