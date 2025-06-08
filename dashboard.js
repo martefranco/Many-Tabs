@@ -481,7 +481,7 @@ async function navigateToTab(tabId, tab) {
   }
 }
 
-function toggleWindowExpansion(wid) {
+async function toggleWindowExpansion(wid) {
   const isExpanded = appState.expandedWindows.has(wid);
   const card = document.querySelector(`[data-window-id="${wid}"]`);
   const body = card?.querySelector('.card-body');
@@ -496,9 +496,9 @@ function toggleWindowExpansion(wid) {
 
     if (body.children.length === 0) {
       if (appState.view === 'duplicates') {
-        populateDuplicateTabsById(wid, body);
+        await populateDuplicateTabsById(wid, body);
       } else {
-        populateWindowTabsById(wid, body);
+        await populateWindowTabsById(wid, body);
       }
     }
     adjustBodyHeight(body);
@@ -545,6 +545,49 @@ async function restoreAllInWindow(wid) {
 }
 
 /* ═════════════ EVENT LISTENERS SIN INLINE ═════════════ */
+
+// Seleccionar todos los checkboxes visibles
+document.getElementById('select-all').addEventListener('click', () => {
+  appState.selectedTabs.clear();
+  appState.selectedWindows.clear();
+
+  document.querySelectorAll('.card-header .custom-checkbox').forEach(cb => {
+    cb.classList.add('checked');
+    if (cb.dataset.window) appState.selectedWindows.add(cb.dataset.window);
+  });
+
+  document.querySelectorAll('.tab-item .custom-checkbox').forEach(cb => {
+    cb.classList.add('checked');
+    if (cb.dataset.tab) appState.selectedTabs.add(cb.dataset.tab);
+  });
+});
+
+// Suspender elementos seleccionados
+document.getElementById('suspend-selected').addEventListener('click', async () => {
+  if (appState.selectedWindows.size === 0 && appState.selectedTabs.size === 0) return;
+  if (!confirm('¿Suspender las pestañas seleccionadas?')) return;
+
+  const handled = new Set();
+
+  for (const wid of appState.selectedWindows) {
+    await suspendAllInWindow(wid);
+    const { tabs = {} } = await store.get(['tabs']);
+    for (const [tid, t] of Object.entries(tabs)) {
+      if (t.windowId === wid) handled.add(tid);
+    }
+  }
+
+  for (const tid of appState.selectedTabs) {
+    if (handled.has(tid)) continue;
+    await suspendTab(tid);
+  }
+
+  // Limpiar selección
+  appState.selectedWindows.clear();
+  appState.selectedTabs.clear();
+  document.querySelectorAll('.custom-checkbox').forEach(cb => cb.classList.remove('checked'));
+  setTimeout(() => refreshView(), 300);
+});
 
 // Usar delegación de eventos más robusta
 document.addEventListener('click', async (e) => {
@@ -647,7 +690,7 @@ document.addEventListener('click', async (e) => {
   if (target.closest('.card-header') && !target.closest('.window-actions') && !target.closest('.custom-checkbox')) {
     const wid = target.closest('.card-header').dataset.windowId;
     if (wid) {
-      toggleWindowExpansion(wid);
+      await toggleWindowExpansion(wid);
     }
     return;
   }
