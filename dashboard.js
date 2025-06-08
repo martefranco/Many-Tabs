@@ -27,7 +27,9 @@ function createIcon(path, className = '') {
 const appState = {
   expandedWindows: new Set(),
   selectedTabs: new Set(),
-  selectedWindows: new Set()
+  selectedWindows: new Set(),
+  view: 'tabs',
+  duplicatesByWindow: {}
 };
 
 /* ═════════════ VALIDACIONES Y UTILIDADES ═════════════ */
@@ -108,7 +110,7 @@ document.getElementById('btn-sync').addEventListener('click', async () => {
   const response = await sendMessage('SYNC_ALL');
   if (response?.ok) {
     console.log('[Dashboard] Sincronización exitosa');
-    setTimeout(() => renderDashboard(), 300);
+    setTimeout(() => refreshView(), 300);
   } else {
     console.error('[Dashboard] Error en sincronización:', response);
     alert('Error en la sincronización. Revisa la consola para más detalles.');
@@ -165,7 +167,51 @@ async function renderDashboard() {
   }
 }
 
-function createWindowCard(wid, win, allTabs) {
+async function renderDuplicates() {
+  await cleanupInvalidTabs();
+
+  const { windows = {}, tabs = {} } = await store.get(['windows', 'tabs']);
+  const stats = document.getElementById('stats');
+  const cards = document.getElementById('cards');
+
+  const { duplicateUrls, duplicatesByWindow, duplicatesCount } = computeDuplicateTabs(tabs);
+  appState.duplicatesByWindow = duplicatesByWindow;
+
+  if (!duplicateUrls.size) {
+    stats.innerHTML = '<div class="no-results">No hay pestañas repetidas entre ventanas.</div>';
+    cards.innerHTML = '';
+    return;
+  }
+
+  stats.innerHTML = `
+    <div class="stat-item">
+      <span class="stat-number">${duplicateUrls.size}</span>
+      <span class="stat-label">Páginas repetidas</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">${duplicatesCount}</span>
+      <span class="stat-label">Pestañas</span>
+    </div>
+  `;
+
+  cards.innerHTML = '';
+  for (const [wid, winTabs] of Object.entries(duplicatesByWindow)) {
+    const win = windows[wid];
+    if (!win) continue;
+    const card = createWindowCard(wid, win, tabs, winTabs);
+    cards.appendChild(card);
+  }
+}
+
+function refreshView() {
+  if (appState.view === 'duplicates') {
+    renderDuplicates();
+  } else {
+    renderDashboard();
+  }
+}
+
+function createWindowCard(wid, win, allTabs, windowTabsOverride = null) {
   const card = document.createElement('div');
   card.className = 'card';
   if (win.closed) card.classList.add('closed');
@@ -177,7 +223,8 @@ function createWindowCard(wid, win, allTabs) {
   header.className = 'card-header';
   header.dataset.windowId = wid;
   
-  const windowTabs = Object.entries(allTabs).filter(([, tab]) => tab.windowId === wid);
+  const windowTabs = windowTabsOverride ||
+    Object.entries(allTabs).filter(([, tab]) => tab.windowId === wid);
   const totalTabs = windowTabs.length;
   const activeTabs = windowTabs.filter(([, tab]) => tab.state === 'ACTIVE').length;
   const suspendedTabs = windowTabs.filter(([, tab]) => tab.state === 'SUSPENDED').length;
@@ -236,6 +283,30 @@ function adjustBodyHeight(body) {
   const count = body.children.length;
   const visible = Math.min(count, 15);
   body.style.maxHeight = (h * visible) + 'px';
+}
+
+function computeDuplicateTabs(allTabs) {
+  const urlWindows = {};
+  for (const [tid, tab] of Object.entries(allTabs)) {
+    if (!urlWindows[tab.url]) urlWindows[tab.url] = new Set();
+    urlWindows[tab.url].add(tab.windowId);
+  }
+
+  const duplicateUrls = new Set();
+  for (const [url, wins] of Object.entries(urlWindows)) {
+    if (wins.size > 1) duplicateUrls.add(url);
+  }
+
+  const duplicatesByWindow = {};
+  let duplicatesCount = 0;
+  for (const [tid, tab] of Object.entries(allTabs)) {
+    if (duplicateUrls.has(tab.url)) {
+      duplicatesByWindow[tab.windowId] ??= [];
+      duplicatesByWindow[tab.windowId].push([tid, tab]);
+      duplicatesCount++;
+    }
+  }
+  return { duplicateUrls, duplicatesByWindow, duplicatesCount };
 }
 
 function createTabItem(tabId, tab) {
@@ -342,23 +413,23 @@ async function suspendTab(tid) {
   
   if (!tab) {
     console.warn(`[Dashboard] Pestaña ${tid} no encontrada en storage`);
-    renderDashboard(); // Refresh para limpiar
+    refreshView(); // Refresh para limpiar
     return;
   }
   
   if (tab.state === 'ACTIVE' && !(await tabExists(tid))) {
     console.warn(`[Dashboard] Pestaña ${tid} ya no existe en el navegador`);
-    renderDashboard(); // Refresh para limpiar
+    refreshView(); // Refresh para limpiar
     return;
   }
   
   const response = await sendMessage('SUSPEND_TAB', { tid });
   if (response?.ok) {
     console.log(`[Dashboard] Pestaña ${tid} suspendida exitosamente`);
-    setTimeout(() => renderDashboard(), 300);
+    setTimeout(() => refreshView(), 300);
   } else {
     console.error(`[Dashboard] Error al suspender pestaña ${tid}:`, response);
-    renderDashboard(); // Refresh en caso de error
+    refreshView(); // Refresh en caso de error
   }
 }
 
@@ -368,10 +439,10 @@ async function restoreTab(tid) {
   const response = await sendMessage('RESTORE_TAB', { tid });
   if (response?.ok) {
     console.log(`[Dashboard] Pestaña ${tid} restaurada exitosamente`);
-    setTimeout(() => renderDashboard(), 300);
+    setTimeout(() => refreshView(), 300);
   } else {
     console.error(`[Dashboard] Error al restaurar pestaña ${tid}:`, response);
-    renderDashboard(); // Refresh en caso de error
+    refreshView(); // Refresh en caso de error
   }
 }
 
@@ -381,10 +452,10 @@ async function deleteTab(tid) {
   const response = await sendMessage('DELETE_TAB', { tid });
   if (response?.ok) {
     console.log(`[Dashboard] Pestaña ${tid} eliminada exitosamente`);
-    setTimeout(() => renderDashboard(), 300);
+    setTimeout(() => refreshView(), 300);
   } else {
     console.error(`[Dashboard] Error al eliminar pestaña ${tid}:`, response);
-    renderDashboard(); // Refresh en caso de error
+    refreshView(); // Refresh en caso de error
   }
 }
 
@@ -393,7 +464,7 @@ async function navigateToTab(tabId, tab) {
     // Verificar que la pestaña aún existe
     if (!(await tabExists(tabId))) {
       console.warn(`[Dashboard] Pestaña ${tabId} ya no existe, refrescando dashboard`);
-      renderDashboard();
+      refreshView();
       return;
     }
     
@@ -403,7 +474,7 @@ async function navigateToTab(tabId, tab) {
       console.log(`[Dashboard] Navegado a pestaña activa ${tabId}`);
     } catch (err) {
       console.warn(`[Dashboard] Error al navegar a pestaña ${tabId}:`, err);
-      renderDashboard(); // Refresh para limpiar pestañas inexistentes
+      refreshView(); // Refresh para limpiar pestañas inexistentes
     }
   } else {
     await restoreTab(tabId);
@@ -424,7 +495,11 @@ function toggleWindowExpansion(wid) {
     appState.expandedWindows.add(wid);
 
     if (body.children.length === 0) {
-      populateWindowTabsById(wid, body);
+      if (appState.view === 'duplicates') {
+        populateDuplicateTabsById(wid, body);
+      } else {
+        populateWindowTabsById(wid, body);
+      }
     }
     adjustBodyHeight(body);
   }
@@ -433,6 +508,14 @@ function toggleWindowExpansion(wid) {
 async function populateWindowTabsById(wid, body) {
   const { tabs = {} } = await store.get(['tabs']);
   const windowTabs = Object.entries(tabs).filter(([, tab]) => tab.windowId === wid);
+  populateWindowTabs(body, windowTabs);
+  adjustBodyHeight(body);
+}
+
+async function populateDuplicateTabsById(wid, body) {
+  const { tabs = {} } = await store.get(['tabs']);
+  const { duplicatesByWindow } = computeDuplicateTabs(tabs);
+  const windowTabs = duplicatesByWindow[wid] || [];
   populateWindowTabs(body, windowTabs);
   adjustBodyHeight(body);
 }
@@ -657,7 +740,13 @@ document.getElementById('burger')
 /* ═════════════ STORAGE CHANGE → repintar ═════════════ */
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.windows || changes.tabs)) {
-    setTimeout(() => renderDashboard(), 100);
+    setTimeout(() => {
+      if (appState.view === 'duplicates') {
+        renderDuplicates();
+      } else {
+        renderDashboard();
+      }
+    }, 100);
   }
 });
 
@@ -668,3 +757,23 @@ setInterval(async () => {
 
 /* Carga inicial */
 window.addEventListener('DOMContentLoaded', renderDashboard);
+
+function setActiveNav(id) {
+  document.querySelectorAll('#sidebar nav a').forEach(a => a.classList.remove('active'));
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+}
+
+document.getElementById('nav-tabs').addEventListener('click', (e) => {
+  e.preventDefault();
+  appState.view = 'tabs';
+  setActiveNav('nav-tabs');
+  renderDashboard();
+});
+
+document.getElementById('nav-duplicates').addEventListener('click', (e) => {
+  e.preventDefault();
+  appState.view = 'duplicates';
+  setActiveNav('nav-duplicates');
+  renderDuplicates();
+});
