@@ -20,9 +20,19 @@
        const { windows = {}, tabs = {} } = await store.get(['windows', 'tabs']);
        const wid = String(tab.windowId);
    
-       windows[wid] ??= { alias: `Ventana ${wid}`, active: 0, suspended: 0, lastActive: Date.now() };
-       windows[wid].active    = Math.max(0, (windows[wid].active || 1) - 1);
-       windows[wid].suspended = (windows[wid].suspended || 0) + 1;
+      windows[wid] ??= { alias: `Ventana ${wid}`, active: 0, suspended: 0, lastActive: Date.now() };
+      const lastActive = windows[wid].active <= 1;
+      windows[wid].active    = Math.max(0, (windows[wid].active || 1) - 1);
+      windows[wid].suspended = (windows[wid].suspended || 0) + 1;
+
+      // Si es la última pestaña activa de la ventana, abre una en blanco para mantenerla
+      if (lastActive) {
+        try {
+          await chrome.tabs.create({ windowId: tab.windowId, url: 'about:blank' });
+        } catch (err) {
+          console.warn(`[TabSuspender] No se pudo crear pestaña en blanco en la ventana ${wid}:`, err);
+        }
+      }
    
       tabs[String(tab.id)] = {
         windowId: wid,
@@ -357,18 +367,32 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
   try {
     const { windows = {}, tabs: allTabs = {} } = await store.get(['windows', 'tabs']);
-    const t = allTabs[String(tabId)];
-    if (!t) return; // Solo actualiza si ya está registrado
+    let t = allTabs[String(tabId)];
 
-    // Actualiza solo los campos que hayan cambiado
-    if (changeInfo.url)        t.url    = changeInfo.url;
-    if (changeInfo.title)      t.title  = changeInfo.title;
-    if (changeInfo.favIconUrl) t.favIcon = changeInfo.favIconUrl;
-    t.lastVisit = Date.now();
+    // Si no existe registro para la pestaña, créalo
+    if (!t) {
+      const wid = String(tab.windowId);
+      windows[wid] ??= { alias: `Ventana ${wid}`, active: 1, suspended: 0, lastActive: Date.now(), closed: false };
+      t = {
+        windowId: wid,
+        url: changeInfo.url || tab.url,
+        title: changeInfo.title || tab.title,
+        favIcon: changeInfo.favIconUrl || tab.favIconUrl,
+        index: tab.index,
+        lastVisit: Date.now(),
+        state: 'ACTIVE'
+      };
+    } else {
+      // Actualiza solo los campos que hayan cambiado
+      if (changeInfo.url)        t.url    = changeInfo.url;
+      if (changeInfo.title)      t.title  = changeInfo.title;
+      if (changeInfo.favIconUrl) t.favIcon = changeInfo.favIconUrl;
+      t.lastVisit = Date.now();
+    }
 
     allTabs[String(tabId)] = t;
-    store.queueWrite({ tabs: allTabs });
-    await store.set({ tabs: allTabs });
+    store.queueWrite({ windows, tabs: allTabs });
+    await store.set({ windows, tabs: allTabs });
   } catch (err) {
     console.error(`[TabSuspender] Error en onUpdated para pestaña ${tabId}:`, err);
   }
