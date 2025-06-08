@@ -11,7 +11,7 @@
    import * as store from './storage.js';
 
    /* ═════════════ 1. CONFIGURACIÓN & HELPERS ═══════════ */
-   const SUSPEND_MINUTES = 30;
+   const SUSPEND_MINUTES = 1440;
    const ALARM_NAME = 'checkInactive';
    
    /* suspende pestaña ACTIVA */
