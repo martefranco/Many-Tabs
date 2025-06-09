@@ -34,4 +34,4 @@ export function queueWrite(obj) {
 // Placeholder for future migration logic
 export function migrateSyncToLocal() {
   // To be implemented in v1.1
-} 
+}
