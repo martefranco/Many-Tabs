@@ -32,6 +32,16 @@ const appState = {
   duplicatesByWindow: {}
 };
 
+// Cargar ventanas previamente expandidas desde storage
+async function loadExpandedWindows() {
+  const { expandedWindows = [] } = await store.get(['expandedWindows']);
+  if (Array.isArray(expandedWindows)) {
+    appState.expandedWindows = new Set(expandedWindows.map(String));
+  } else {
+    appState.expandedWindows = new Set();
+  }
+}
+
 /* ═════════════ VALIDACIONES Y UTILIDADES ═════════════ */
 
 // Validar si una URL de favicon es segura
@@ -503,6 +513,7 @@ async function toggleWindowExpansion(wid) {
     }
     adjustBodyHeight(body);
   }
+  await store.set({ expandedWindows: Array.from(appState.expandedWindows) });
 }
 
 async function populateWindowTabsById(wid, body) {
@@ -782,14 +793,20 @@ document.getElementById('burger')
 
 /* ═════════════ STORAGE CHANGE → repintar ═════════════ */
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.windows || changes.tabs)) {
-    setTimeout(() => {
-      if (appState.view === 'duplicates') {
-        renderDuplicates();
-      } else {
-        renderDashboard();
-      }
-    }, 100);
+  if (area === 'local') {
+    if (changes.expandedWindows) {
+      const val = changes.expandedWindows.newValue || [];
+      appState.expandedWindows = new Set((val || []).map(String));
+    }
+    if (changes.windows || changes.tabs) {
+      setTimeout(() => {
+        if (appState.view === 'duplicates') {
+          renderDuplicates();
+        } else {
+          renderDashboard();
+        }
+      }, 100);
+    }
   }
 });
 
@@ -799,7 +816,10 @@ setInterval(async () => {
 }, 30000);
 
 /* Carga inicial */
-window.addEventListener('DOMContentLoaded', renderDashboard);
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadExpandedWindows();
+  renderDashboard();
+});
 
 function setActiveNav(id) {
   document.querySelectorAll('#sidebar nav a').forEach(a => a.classList.remove('active'));
