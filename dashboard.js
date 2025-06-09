@@ -32,6 +32,16 @@ const appState = {
   duplicatesByWindow: {}
 };
 
+// Cargar ventanas previamente expandidas desde storage
+async function loadExpandedWindows() {
+  const { expandedWindows = [] } = await store.get(['expandedWindows']);
+  if (Array.isArray(expandedWindows)) {
+    appState.expandedWindows = new Set(expandedWindows.map(String));
+  } else {
+    appState.expandedWindows = new Set();
+  }
+}
+
 /* ═════════════ VALIDACIONES Y UTILIDADES ═════════════ */
 
 // Validar si una URL de favicon es segura
@@ -121,6 +131,7 @@ document.getElementById('btn-sync').addEventListener('click', async () => {
 async function renderDashboard() {
   // Limpiar pestañas inválidas antes de renderizar
   await cleanupInvalidTabs();
+  await loadExpandedWindows();
   
   const { windows = {}, tabs = {} } = await store.get(['windows', 'tabs']);
   const stats = document.getElementById('stats');
@@ -169,6 +180,7 @@ async function renderDashboard() {
 
 async function renderDuplicates() {
   await cleanupInvalidTabs();
+  await loadExpandedWindows();
 
   const { windows = {}, tabs = {} } = await store.get(['windows', 'tabs']);
   const stats = document.getElementById('stats');
@@ -229,23 +241,21 @@ function createWindowCard(wid, win, allTabs, windowTabsOverride = null) {
   const activeTabs = windowTabs.filter(([, tab]) => tab.state === 'ACTIVE').length;
   const suspendedTabs = windowTabs.filter(([, tab]) => tab.state === 'SUSPENDED').length;
   
+  const actions = [
+    `<div class="window-action" data-action="focus" data-window="${wid}" title="Enfocar ventana">${createIcon(ICONS.focus).outerHTML}</div>`,
+    `<div class="window-action" data-action="suspend-all" data-window="${wid}" title="Suspender todas">${createIcon(ICONS.windowSuspend).outerHTML}</div>`,
+    `<div class="window-action" data-action="restore-all" data-window="${wid}" title="Restaurar todas">${createIcon(ICONS.windowRestore).outerHTML}</div>`
+  ];
+  if (totalTabs === 0) {
+    actions.push(`<div class="window-action" data-action="delete-window" data-window="${wid}" title="Eliminar ventana">${createIcon(ICONS.delete).outerHTML}</div>`);
+  }
   header.innerHTML = `
     <div class="window-info">
       <div class="custom-checkbox" data-window="${wid}"></div>
       <span class="window-title">${win.alias}</span>
       <span class="window-count">(${totalTabs}) - ${activeTabs}A / ${suspendedTabs}S</span>
     </div>
-    <div class="window-actions">
-      <div class="window-action" data-action="focus" data-window="${wid}" title="Enfocar ventana">
-        ${createIcon(ICONS.focus).outerHTML}
-      </div>
-      <div class="window-action" data-action="suspend-all" data-window="${wid}" title="Suspender todas">
-        ${createIcon(ICONS.windowSuspend).outerHTML}
-      </div>
-      <div class="window-action" data-action="restore-all" data-window="${wid}" title="Restaurar todas">
-        ${createIcon(ICONS.windowRestore).outerHTML}
-      </div>
-    </div>
+    <div class="window-actions">${actions.join('')}</div>
   `;
 
   const body = document.createElement('div');
@@ -503,6 +513,20 @@ async function toggleWindowExpansion(wid) {
     }
     adjustBodyHeight(body);
   }
+  await store.set({ expandedWindows: Array.from(appState.expandedWindows) });
+}
+
+async function deleteWindow(wid) {
+  const { windows = {}, tabs = {} } = await store.get(['windows', 'tabs']);
+  delete windows[wid];
+  for (const tid of Object.keys(tabs)) {
+    if (tabs[tid].windowId === wid) {
+      delete tabs[tid];
+    }
+  }
+  await store.set({ windows, tabs });
+  appState.expandedWindows.delete(wid);
+  await store.set({ expandedWindows: Array.from(appState.expandedWindows) });
 }
 
 async function populateWindowTabsById(wid, body) {
@@ -654,6 +678,12 @@ document.addEventListener('click', async (e) => {
           await restoreAllInWindow(wid);
         }
         break;
+      case 'delete-window':
+        if (confirm('¿Eliminar esta ventana del dashboard?')) {
+          await deleteWindow(wid);
+          refreshView();
+        }
+        break;
     }
     return;
   }
@@ -782,14 +812,20 @@ document.getElementById('burger')
 
 /* ═════════════ STORAGE CHANGE → repintar ═════════════ */
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.windows || changes.tabs)) {
-    setTimeout(() => {
-      if (appState.view === 'duplicates') {
-        renderDuplicates();
-      } else {
-        renderDashboard();
-      }
-    }, 100);
+  if (area === 'local') {
+    if (changes.expandedWindows) {
+      const val = changes.expandedWindows.newValue || [];
+      appState.expandedWindows = new Set((val || []).map(String));
+    }
+    if (changes.windows || changes.tabs) {
+      setTimeout(() => {
+        if (appState.view === 'duplicates') {
+          renderDuplicates();
+        } else {
+          renderDashboard();
+        }
+      }, 100);
+    }
   }
 });
 
@@ -799,7 +835,10 @@ setInterval(async () => {
 }, 30000);
 
 /* Carga inicial */
-window.addEventListener('DOMContentLoaded', renderDashboard);
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadExpandedWindows();
+  renderDashboard();
+});
 
 function setActiveNav(id) {
   document.querySelectorAll('#sidebar nav a').forEach(a => a.classList.remove('active'));
