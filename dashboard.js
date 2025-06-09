@@ -1,4 +1,6 @@
-/* dashboard.js — SIN EVENT HANDLERS INLINE - CSP COMPLIANT */
+/* dashboard.js — SIN EVENT HANDLERS INLINE - CSP COMPLIANT
+   Mantiene la expansión de ventanas al sincronizar y permite
+   eliminar ventanas vacías desde el dashboard. */
 import * as store from './storage.js';
 
 // Iconos SVG
