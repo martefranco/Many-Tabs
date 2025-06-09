@@ -238,6 +238,7 @@ function createWindowCard(wid, win, allTabs, windowTabsOverride = null) {
   const totalTabs = windowTabs.length;
   const activeTabs = windowTabs.filter(([, tab]) => tab.state === 'ACTIVE').length;
   const suspendedTabs = windowTabs.filter(([, tab]) => tab.state === 'SUSPENDED').length;
+  const showDelete = win.closed || totalTabs === 0;
   
   header.innerHTML = `
     <div class="window-info">
@@ -255,6 +256,7 @@ function createWindowCard(wid, win, allTabs, windowTabsOverride = null) {
       <div class="window-action" data-action="restore-all" data-window="${wid}" title="Restaurar todas">
         ${createIcon(ICONS.windowRestore).outerHTML}
       </div>
+      ${showDelete ? `<div class="window-action delete-window" data-action="delete" data-window="${wid}" title="Eliminar ventana">${createIcon(ICONS.delete).outerHTML}</div>` : ''}
     </div>
   `;
 
@@ -555,6 +557,17 @@ async function restoreAllInWindow(wid) {
   }
 }
 
+async function deleteWindow(wid) {
+  const { tabs = {} } = await store.get(['tabs']);
+  const windowTabs = Object.entries(tabs)
+    .filter(([, tab]) => tab.windowId === wid);
+
+  for (const [tabId] of windowTabs) {
+    await deleteTab(tabId);
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+
 /* ═════════════ EVENT LISTENERS SIN INLINE ═════════════ */
 
 // Seleccionar todos los checkboxes visibles
@@ -663,6 +676,11 @@ document.addEventListener('click', async (e) => {
       case 'restore-all':
         if (confirm('¿Restaurar todas las pestañas suspendidas de esta ventana?')) {
           await restoreAllInWindow(wid);
+        }
+        break;
+      case 'delete':
+        if (confirm('¿Eliminar esta ventana y todas sus pestañas?')) {
+          await deleteWindow(wid);
         }
         break;
     }
